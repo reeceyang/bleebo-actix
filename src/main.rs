@@ -1,4 +1,4 @@
-use std::pin::Pin;
+use std::{fs, pin::Pin};
 
 use actix_web::{
     dev::{Service as _, ServiceRequest},
@@ -66,8 +66,6 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        println!("Hi from start. You requested: {}", req.path());
-
         let host = req.headers().get("Host").unwrap().to_str().unwrap();
 
         if host == BASE_HOST {
@@ -84,9 +82,13 @@ where
             .unwrap()
             .strip_suffix(".")
             .unwrap();
+        let new_uri = format!("/site/{}/{}", subdomain, req.uri());
+        println!(
+            "Forwarding request to {} subdomain to {}",
+            subdomain, new_uri
+        );
 
-        let new_req = TestRequest::with_uri(format!("/site/{}/{}", subdomain, req.uri()).as_str())
-            .to_srv_request();
+        let new_req = TestRequest::with_uri(&new_uri).to_srv_request();
 
         let fut = self.service.call(new_req);
 
@@ -101,14 +103,13 @@ where
 const BASE_HOST: &str = "bleebo.reeceyang.xyz";
 
 // auth middleware
-async fn upload(req: ServiceRequest, credentials: BasicAuth) -> Result<ServiceRequest, Error> {
-    let config = req
-        .app_data::<Config>()
-        .map(|data| Pin::new(data).get_ref().clone())
-        .unwrap_or_else(Default::default);
-    println!("Hi from start. You requested: {}", req.uri());
-    println!("{}", req.headers().get("Host").unwrap().to_str().unwrap());
-    let host = req.headers().get("Host").unwrap().to_str().unwrap();
+#[get("/all-sites")]
+async fn upload(credentials: BasicAuth) -> String {
+    // let config = req
+    //     .app_data::<Config>()
+    //     .map(|data| Pin::new(data).get_ref().clone())
+    //     .unwrap_or_else(Default::default);
+    // println!("Hi from start. You requested: {}", req.uri());
 
     // TODO: validate credentials
     println!(
@@ -116,6 +117,14 @@ async fn upload(req: ServiceRequest, credentials: BasicAuth) -> Result<ServiceRe
         credentials.user_id(),
         credentials.password()
     );
+    let sites = fs::read_dir("./")
+        .unwrap()
+        .into_iter()
+        .map(|x| x.unwrap().path().to_str().unwrap().to_owned())
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    sites
     // match auth::validate_token(credentials.token()) {
     //     Ok(res) => {
     //         if res == true {
@@ -126,7 +135,6 @@ async fn upload(req: ServiceRequest, credentials: BasicAuth) -> Result<ServiceRe
     //     }
     //     Err(_) => Err(AuthenticationError::from(config).into()),
     // }
-    return Err(AuthenticationError::from(config).into());
 }
 
 #[actix_web::main]
@@ -135,6 +143,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(HostRoute::new())
             .service(actix_files::Files::new("/site", "site/").index_file("index.html"))
+            .service(upload)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
