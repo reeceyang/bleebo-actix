@@ -117,7 +117,7 @@ async fn upload(credentials: BasicAuth) -> String {
         credentials.user_id(),
         credentials.password()
     );
-    let sites = fs::read_dir("./")
+    let sites = fs::read_dir("site/")
         .unwrap()
         .into_iter()
         .map(|x| x.unwrap().path().to_str().unwrap().to_owned())
